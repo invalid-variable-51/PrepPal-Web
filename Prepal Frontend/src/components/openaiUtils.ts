@@ -43,7 +43,7 @@ export const generateFlashcardsFromHuggingFace = async (topic: string): Promise<
 export const generateRoadmapFromHuggingFace = async (topic: string): Promise<string[]> => {
   try {
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
+      "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct",
       {
         method: "POST",
         headers: {
