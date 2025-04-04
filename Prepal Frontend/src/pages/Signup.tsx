@@ -18,7 +18,7 @@ const Signup: React.FC = () => {
     const toastId = toast.loading("Processing registration...");
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/auth/signup`, {
+      const response = await axios.post(`${process.env.VITE_BACKEND_URL}/api/auth/signup`, {
         email,
         name,
         password,

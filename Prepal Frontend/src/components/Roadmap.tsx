@@ -1,136 +1,201 @@
+// Final Roadmap.tsx with Zoom, Search, Tooltip, Export, and Fixed Layout
 "use client";
 
-import { useState, ChangeEvent } from "react";
-import ReactFlow, { Handle, Position, Node, Edge } from "reactflow";
-import "reactflow/dist/style.css";
+import { useState, useCallback, ChangeEvent, useRef } from "react";
+import { motion } from "framer-motion";
+import { generateRoadmapFromHuggingFace } from "./openaiUtils";
 import Input from "./Input";
 import Button from "./Button";
+import { toPng } from "html-to-image";
+import jsPDF from "jspdf";
+import { Tooltip } from "react-tooltip";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
-// Define type for topics
-type TopicsType = {
-  [key: string]: string[];
-};
-
-const topics: TopicsType = {
-  python: [
-    "Python Basics",
-    "Data Structures",
-    "Object-Oriented Programming",
-    "File Handling and Modules",
-    "Web Development with Django/Flask",
-    "Data Science and Machine Learning",
-  ],
-  "web development": [
-    "Internet Basics",
-    "HTML & Semantic HTML",
-    "CSS & Responsive Design",
-    "JavaScript Fundamentals",
-    "Frontend Frameworks (React, Angular)",
-    "Backend Development (Node.js, Express)",
-    "Database Management",
-    "Version Control (Git & GitHub)",
-    "Deployment & Hosting",
-  ],
-  "c programming": [
-    "Introduction to C",
-    "Data Types & Operators",
-    "Control Structures",
-    "Functions & Recursion",
-    "Pointers & Memory Management",
-    "Structures & File Handling",
-    "Advanced C Concepts",
-  ],
-  "machine learning": [
-    "Introduction to ML",
-    "Supervised vs Unsupervised Learning",
-    "Regression & Classification",
-    "Neural Networks & Deep Learning",
-    "Feature Engineering & Model Evaluation",
-    "ML Frameworks (TensorFlow, PyTorch)",
-  ],
-};
-
-// Define type for node data
-interface RoadmapNodeData {
+interface RoadmapItem {
+  id: string;
   label: string;
+  level: number;
+  parentId?: string;
+  x: number;
+  y: number;
+  completed?: boolean;
 }
 
-interface RoadmapNodeProps {
-  data: RoadmapNodeData;
-}
+const generateId = () => Math.random().toString(36).substring(2, 9);
 
-const RoadmapNode: React.FC<RoadmapNodeProps> = ({ data }) => (
-  <div className="p-4 rounded shadow-lg text-black text-center bg-gray-100">
-    <Handle type="target" position={Position.Top} className="bg-black" />
-    {data.label}
-    <Handle type="source" position={Position.Bottom} className="bg-black" />
-  </div>
-);
+const getColorByLevel = (level: number) => {
+  const colors = ["bg-white", "bg-blue-100", "bg-green-100", "bg-yellow-100"];
+  return colors[level % colors.length];
+};
 
-const Roadmap: React.FC = () => {
-  const [topic, setTopic] = useState<string>("");
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+const Roadmap = () => {
+  const [topic, setTopic] = useState("");
+  const [search, setSearch] = useState("");
+  const [nodes, setNodes] = useState<RoadmapItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const roadmapRef = useRef<HTMLDivElement>(null);
 
-  const generateRoadmap = () => {
-    const lowerCaseTopic = topic.toLowerCase();
+  const fetchInitialRoadmap = async () => {
+    if (!topic.trim()) return;
 
-    if (!topics[lowerCaseTopic]) return;
+    setLoading(true);
+    const roadmap = await generateRoadmapFromHuggingFace(topic);
+    setLoading(false);
 
-    const roadmapItems = topics[lowerCaseTopic];
-
-    // Generate nodes
-    const generatedNodes: Node[] = roadmapItems.map((item, index) => ({
-      id: `${index}`,
-      position: { x: 200, y: index * 100 },
-      data: { label: item },
-      type: "customNode",
+    const rootNodes = roadmap.slice(0, 3).map((label, index) => ({
+      id: generateId(),
+      label,
+      level: 0,
+      x: 300,
+      y: 120 + index * 180,
+      completed: false,
     }));
 
-    // Generate edges
-    const generatedEdges: Edge[] = roadmapItems.slice(1).map((_, index) => ({
-      id: `e${index}-${index + 1}`,
-      source: `${index}`,
-      target: `${index + 1}`,
-      type: "smoothstep",
-      animated: true,
-    }));
-
-    setNodes(generatedNodes);
-    setEdges(generatedEdges);
+    setNodes(rootNodes);
   };
 
+  const expandNode = useCallback(async (node: RoadmapItem) => {
+    const children = await generateRoadmapFromHuggingFace(node.label);
+    const childNodes = children.slice(0, 3).map((label, idx) => ({
+      id: generateId(),
+      label,
+      level: node.level + 1,
+      parentId: node.id,
+      x: node.x + 350,
+      y: node.y + (idx - 1) * 180,
+      completed: false,
+    }));
+
+    setNodes((prev) => [...prev, ...childNodes]);
+  }, []);
+
+  const handleNodeClick = (node: RoadmapItem) => {
+    const hasChildren = nodes.some((n) => n.parentId === node.id);
+    if (!hasChildren) expandNode(node);
+  };
+
+  const handleChildClick = (label: string) => {
+    const search = encodeURIComponent(`${label} site:developer.mozilla.org`);
+    window.open(`https://www.google.com/search?q=${search}`, "_blank");
+  };
+
+  const toggleComplete = (id: string) => {
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, completed: !n.completed } : n
+      )
+    );
+  };
+
+  const exportAsImage = async () => {
+    const element = roadmapRef.current;
+    if (!element) return;
+    const dataUrl = await toPng(element);
+    const pdf = new jsPDF("landscape");
+    pdf.addImage(dataUrl, "PNG", 10, 10, 280, 150);
+    pdf.save("roadmap.pdf");
+  };
+
+  const highlightMatch = (label: string) =>
+    search && label.toLowerCase().includes(search.toLowerCase());
+
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <h2 className="text-3xl font-bold mb-6 text-black text-center">
-        Generate Your Learning Roadmap
-      </h2>
+    <div className="min-h-screen bg-gradient-to-br from-white to-gray-50 text-black px-6 py-8">
+      <h1 className="text-4xl font-bold text-center mb-6">🧠 Generate Your Learning Roadmap</h1>
+
       <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-6">
         <Input
           value={topic}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setTopic(e.target.value)}
-          placeholder="Enter topic (e.g., Python, Web Development)"
-          className="border-2 border-black p-2 w-full sm:w-auto"
-          label="input topic"
+          placeholder="e.g., React, DevOps, AI"
+          className="w-full sm:w-96 border border-gray-300 px-4 py-2 rounded-md"
+          label="Topic"
         />
         <Button
-          onClick={generateRoadmap}
-          className="bg-black text-white px-4 py-2"
+          onClick={fetchInitialRoadmap}
+          className="bg-black text-white px-6 py-2 mt-5 rounded-md hover:scale-105 transition"
         >
-          Generate
+          {loading ? "Generating..." : "Generate"}
         </Button>
       </div>
-      <div style={{ height: 500 }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={{ customNode: RoadmapNode }}
-          fitView
-          panOnScroll={false}
-          zoomOnScroll={false}
-          zoomOnPinch={false}
-          zoomOnDoubleClick={false}
+
+      <div className="flex flex-wrap justify-center gap-3 mb-6">
+        <input
+          type="text"
+          placeholder="🔍 Search Node..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border border-gray-400 px-3 py-2 rounded-md w-64 text-sm"
         />
+        {nodes.length > 0 && (
+          <Button
+            onClick={exportAsImage}
+            className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition text-sm"
+          >
+            Export PDF
+          </Button>
+        )}
+      </div>
+
+      <div className="w-full h-[calc(100vh-280px)] overflow-hidden border rounded-lg bg-white shadow-md">
+        <TransformWrapper initialScale={1} minScale={0.5} maxScale={2}>
+              <TransformComponent>
+                <div id="roadmap-container" ref={roadmapRef} className="relative  w-[3000px] h-[2000px]">
+                  <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                    {nodes.map((child) => {
+                      const parent = nodes.find((n) => n.id === child.parentId);
+                      if (!parent) return null;
+                      const startX = parent.x + 120;
+                      const startY = parent.y + 50;
+                      const endX = child.x + 120;
+                      const endY = child.y;
+                      return (
+                        <line
+                          key={`line-${child.id}`}
+                          x1={startX}
+                          y1={startY}
+                          x2={endX}
+                          y2={endY}
+                          stroke="#cbd5e0"
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
+                  </svg>
+
+                  {nodes.map((node) => (
+                    <motion.div
+                      key={node.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.4 }}
+                      data-tip={node.label}
+                      className={`absolute rounded-lg px-4 py-3 w-[200px] text-center border shadow-sm hover:shadow-md transition cursor-pointer ${
+                        getColorByLevel(node.level)
+                      } ${node.completed ? "border-green-600 bg-green-50" : ""} ${
+                        highlightMatch(node.label) ? "ring-2 ring-blue-500" : ""
+                      }`}
+                      style={{ top: node.y, left: node.x }}
+                      onClick={() =>
+                        node.parentId ? handleChildClick(node.label) : handleNodeClick(node)
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={node.completed}
+                        onChange={() => toggleComplete(node.id)}
+                        className="mr-2"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <h3 className="text-sm font-semibold inline-block align-middle">
+                        {node.label}
+                      </h3>
+                      <Tooltip place="top"/>
+                    </motion.div>
+                  ))}
+                </div>
+              </TransformComponent>
+        </TransformWrapper>
       </div>
     </div>
   );

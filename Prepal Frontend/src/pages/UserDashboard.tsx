@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -17,6 +18,7 @@ const data = [
 
 const UserDashboard: React.FC = () => {
   const [streak, _setStreak] = useState(5);
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -72,9 +74,9 @@ const UserDashboard: React.FC = () => {
         <div className="mt-8">
           <h3 className="text-2xl font-bold mb-4">Quick Actions</h3>
           <div className="flex space-x-4">
-            <Button>Create New Study Plan</Button>
-            <Button variant="secondary">Review Flashcards</Button>
-            <Button variant="outline">Update Roadmap</Button>
+            <Button onClick={()=>navigate("/schedule")} >Create New Study Plan</Button>
+            <Button onClick={()=>navigate("/flashcards")} variant="secondary">Review Flashcards</Button>
+            <Button onClick={()=>navigate("/roadmap")} variant="outline">Update Roadmap</Button>
           </div>
         </div>
       </motion.main>
